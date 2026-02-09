@@ -1,0 +1,41 @@
+# Ollama Configuration
+ollama:
+  base_url: "http://localhost:11434"
+  llm_model: "llama3.2:3b"  # Change to your installed model
+  embedding_model: "mxbai-embed-large"  # Change to your installed embedding model
+  temperature: 0.7
+  timeout: 120
+
+# Milvus Configuration
+milvus:
+  host: "localhost"
+  port: 19530
+  collection_name: "document_chunks"
+  embedding_dim: 1024  # Must match embedding model dimension
+  index_type: "HNSW"
+  metric_type: "COSINE"
+
+# Document Processing
+chunking:
+  chunk_size: 512
+  chunk_overlap: 128
+  separators: ["\n\n", "\n", ". ", " ", ""]
+
+# Retrieval
+retrieval:
+  top_k: 5
+  hybrid_alpha: 0.7  # Weight for dense vs sparse (0=all sparse, 1=all dense)
+  similarity_threshold: 0.5
+  rerank_top_k: 3
+
+# Agent Configuration
+agents:
+  max_iterations: 3
+  quality_threshold: 0.7
+  enable_self_reflection: true
+
+# UI Configuration
+ui:
+  upload_folder: "uploads"
+  max_file_size_mb: 50
+  allowed_extensions: ["pdf", "docx", "pptx", "xlsx", "txt"]

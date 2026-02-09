@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agentic RAG System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>AGENTIC RAG SYSTEM</h1>
+            <p class="subtitle">Multi-Agent Document Q&A with Self-Reflection</p>
+        </header>
+
+        <div class="main-grid">
+            <!-- Left Panel: Upload & Query -->
+            <div class="panel">
+                <section class="upload-section">
+                    <h2>Document Upload</h2>
+                    <form id="upload-form" enctype="multipart/form-data">
+                        <input type="file" id="file-input" name="file" accept=".pdf,.docx,.pptx,.xlsx,.txt" multiple>
+                        <button type="button" onclick="uploadFiles()" class="btn">Upload</button>
+                    </form>
+                    <div id="upload-status"></div>
+                    <div id="indexed-docs" class="doc-list"></div>
+                </section>
+
+                <section class="query-section">
+                    <h2>Ask a Question</h2>
+                    <textarea id="query-input" placeholder="Type your question here..."></textarea>
+                    <button onclick="submitQuery()" class="btn btn-primary">Ask</button>
+                </section>
+
+                <section class="stats-section">
+                    <h3>System Stats</h3>
+                    <div id="stats" class="stats-grid">
+                        <div>Documents: <span id="doc-count">0</span></div>
+                        <div>Chunks: <span id="chunk-count">0</span></div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Middle Panel: Answer & Sources -->
+            <div class="panel panel-main">
+                <section class="answer-section">
+                    <h2>Answer</h2>
+                    <div id="answer" class="answer-box">
+                        <p class="placeholder">Answers will appear here...</p>
+                    </div>
+
+                    <div id="sources-section" class="sources-section" style="display: none;">
+                        <h3>Sources</h3>
+                        <div id="sources"></div>
+                    </div>
+                </section>
+
+                <section class="history-section">
+                    <h3>Conversation History</h3>
+                    <div id="history" class="history-list">
+                        <p class="placeholder">No conversation yet</p>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right Panel: Agent Activity -->
+            <div class="panel">
+                <section class="activity-section">
+                    <h2>Agent Activity</h2>
+                    <div id="activity-log" class="activity-log">
+                        <p class="placeholder">Agent reasoning will appear here...</p>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+
+</html>

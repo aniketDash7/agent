@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data
+sample_data/*.pdf
+sample_data/*.docx
+sample_data/*.pptx
+sample_data/*.xlsx
+sample_data/*.txt
+!sample_data/.gitkeep
+
+# Vector DB
+milvus_data/
+volumes/
+bm25_index.pkl
+*.db
+
+# Uploads
+uploads/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config
+.env
+config_local.yaml
