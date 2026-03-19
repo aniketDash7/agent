@@ -1,6 +1,7 @@
 """
 CapitalMind — Application Settings.
 Pydantic settings class with environment variable support.
+Configured for local development with Ollama (no API keys required).
 """
 from __future__ import annotations
 from functools import lru_cache
@@ -16,13 +17,12 @@ class Settings(BaseSettings):
     app_name: str = "CapitalMind"
     debug: bool = True
 
-    # ── LLM Configuration ────────────────────────────────────────────────────
-    anthropic_api_key: SecretStr = SecretStr("")
-    openai_api_key: SecretStr = SecretStr("")
-    primary_model: str = "claude-sonnet-4-20250514"
-    vision_model: str = "gpt-4o"
-    embedding_model: str = "text-embedding-3-large"
-    embedding_dim: int = 3072
+    # ── Ollama (Local LLM) ───────────────────────────────────────────────────
+    ollama_base_url: str = "http://localhost:11434"
+    primary_model: str = "llama3.1:8b"        # Main reasoning LLM
+    vision_model: str = "llava:13b"           # Multimodal / chart interpretation
+    embedding_model: str = "nomic-embed-text"  # Local embeddings (768-dim)
+    embedding_dim: int = 768
 
     # ── Vector Store ─────────────────────────────────────────────────────────
     pinecone_api_key: SecretStr = SecretStr("")
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     quality_threshold: float = 0.75
     agent_max_iterations: int = 5
 
-    # ── AWS ───────────────────────────────────────────────────────────────────
+    # ── AWS (optional — for production S3 uploads) ───────────────────────────
     aws_region: str = "us-east-1"
     s3_bucket: str = "capitalmind-reports"
 

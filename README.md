@@ -1,9 +1,11 @@
 # CapitalMind — AI Investment Research Platform
 
 Production-grade, multi-agent investment intelligence system built on LangGraph,
-Claude (Anthropic), and AWS. Processes SEC filings, earnings transcripts, and
+Ollama (local LLMs), and PostgreSQL. Processes SEC filings, earnings transcripts, and
 real-time market data to generate institutional-quality research memos with
 full audit trails and human-in-the-loop review gates.
+
+> **Runs 100% locally** — no API keys required. Uses Ollama with llama3.1, llava, and nomic-embed-text.
 
 ---
 
@@ -25,14 +27,14 @@ LangGraph StateGraph (src/graph/investment_graph.py)
     ├── plan_research         Pinecone retrieval + strategy
     │
     ├── [PARALLEL FAN-OUT via Send API]
-    │       ├── financial_analysis    Claude → metrics, ratios, EPS
-    │       ├── sentiment_analysis    Claude → tone, guidance, hedging signals
-    │       ├── risk_assessment       Claude → categorized risk flags
-    │       └── peer_comparison       Claude → sector benchmarking
+    │       ├── financial_analysis    Ollama → metrics, ratios, EPS
+    │       ├── sentiment_analysis    Ollama → tone, guidance, hedging signals
+    │       ├── risk_assessment       Ollama → categorized risk flags
+    │       └── peer_comparison       Ollama → sector benchmarking
     │
-    ├── synthesize            Claude → investment memo with citations
+    ├── synthesize            Ollama → investment memo with citations
     │
-    ├── fact_check            Claude → verify every claim vs source docs
+    ├── fact_check            Ollama → verify every claim vs source docs
     │
     ├── hitl_router           LangGraph interrupt() if confidence < 0.80
     │       │
@@ -76,9 +78,14 @@ Pinecone (Serverless)      ← Vector embeddings (3072-dim)
 - Python 3.12+
 - Docker + Docker Compose
 - Node.js 20+
-- Anthropic API key
-- OpenAI API key (vision + embeddings)
-- Pinecone account
+- [Ollama](https://ollama.ai) installed and running
+
+### 1b. Pull Ollama Models
+```bash
+ollama pull llama3.1:8b          # Primary reasoning LLM
+ollama pull llava:13b            # Vision / chart interpretation
+ollama pull nomic-embed-text     # Local embeddings (768-dim)
+```
 
 ### 2. Infrastructure
 ```bash
@@ -283,9 +290,9 @@ capitalmind/
 | Layer | Technology |
 |---|---|
 | Agent orchestration | LangGraph 0.2.28 |
-| Primary LLM | Claude (claude-sonnet-4) |
-| Vision LLM | GPT-4o |
-| Embeddings | OpenAI text-embedding-3-large (3072-dim) |
+| Primary LLM | Ollama — llama3.1:8b (local) |
+| Vision LLM | Ollama — llava:13b (local) |
+| Embeddings | Ollama — nomic-embed-text (768-dim, local) |
 | Vector store | Pinecone Serverless |
 | Framework | FastAPI + Uvicorn + Gunicorn |
 | Database | PostgreSQL 16 (async via asyncpg) |

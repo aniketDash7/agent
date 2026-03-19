@@ -17,8 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 import structlog
-from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt, Send
@@ -42,25 +41,25 @@ settings = get_settings()
 
 
 # ── LLM clients (module-level singletons) ────────────────────────────────────
+# All models served locally via Ollama — no API keys required.
 
-_primary_llm = ChatAnthropic(
+_primary_llm = ChatOllama(
     model=settings.primary_model,
-    anthropic_api_key=settings.anthropic_api_key.get_secret_value(),
+    base_url=settings.ollama_base_url,
     temperature=0.1,
-    max_tokens=8192,
+    num_predict=8192,
 )
 
-_vision_llm = ChatOpenAI(
+_vision_llm = ChatOllama(
     model=settings.vision_model,
-    openai_api_key=settings.openai_api_key.get_secret_value(),
+    base_url=settings.ollama_base_url,
     temperature=0.1,
-    max_tokens=4096,
+    num_predict=4096,
 )
 
-_embeddings = OpenAIEmbeddings(
+_embeddings = OllamaEmbeddings(
     model=settings.embedding_model,
-    openai_api_key=settings.openai_api_key.get_secret_value(),
-    dimensions=settings.embedding_dim,
+    base_url=settings.ollama_base_url,
 )
 
 # ── Agent instances ──────────────────────────────────────────────────────────
