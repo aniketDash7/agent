@@ -1,0 +1,1 @@
+@tailwind base;@tailwind components;@tailwind utilities;:root{--bg-primary: #0a0a0a;--bg-secondary: #121212;--accent-primary: #00ff9d;--text-primary: #ffffff;--text-muted: #888888}body{margin:0;padding:0;background-color:var(--bg-primary);color:var(--text-primary);font-family:Inter,system-ui,-apple-system,sans-serif;overflow-x:hidden}

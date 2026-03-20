@@ -712,12 +712,28 @@ async def create_production_graph():
     from src.utils.settings import get_settings
     settings = get_settings()
 
-    checkpointer = AsyncPostgresSaver.from_conn_string(
-        settings.database_url.replace("+asyncpg", "")
-    )
-    await checkpointer.setup()
+    conn_str = settings.database_url.replace("+asyncpg", "")
 
-    return build_graph(checkpointer=checkpointer)
+    try:
+        from psycopg_pool import AsyncConnectionPool
+        
+        # We need a persistent connection pool for the checkpointer
+        global _pg_pool
+        _pg_pool = AsyncConnectionPool(conninfo=conn_str, max_size=10, open=False)
+        await _pg_pool.open()
+        
+        checkpointer = AsyncPostgresSaver(_pg_pool)
+        await checkpointer.setup()
+        
+        return build_graph(checkpointer=checkpointer)
+    except Exception as e:
+        import structlog
+        structlog.get_logger().warning(
+            "Could not connect to PostgreSQL checkpointer. Falling back to MemorySaver.", 
+            error=str(e)
+        )
+        from langgraph.checkpoint.memory import MemorySaver
+        return build_graph(checkpointer=MemorySaver())
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

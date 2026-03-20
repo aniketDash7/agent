@@ -1,4 +1,4 @@
-# CapitalMind — AI Investment Research Platform
+ # CapitalMind — AI Investment Research Platform
 
 Production-grade, multi-agent investment intelligence system built on LangGraph,
 Ollama (local LLMs), and PostgreSQL. Processes SEC filings, earnings transcripts, and

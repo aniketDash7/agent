@@ -1,13 +1,15 @@
 """
 CapitalMind — Sentiment Analyst Agent.
-Analyzes management tone, analyst sentiment, and forward guidance signals.
+Analyzes tone, guidance, and hedging signals in management commentary.
 """
 from __future__ import annotations
+import json
 from typing import Any
+from langchain_core.messages import SystemMessage, HumanMessage
 
 
 class SentimentAnalystAgent:
-    """Agent that performs sentiment analysis on earnings transcripts and filings."""
+    """Agent that performs sentiment and tone analysis on transcripts/filings."""
 
     def __init__(self, llm):
         self.llm = llm
@@ -16,25 +18,54 @@ class SentimentAnalystAgent:
         self,
         ticker: str,
         context_chunks: list[dict],
-        document_types: list[str] | None = None,
+        market_snapshot: dict | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Analyze sentiment across document sources.
-        Returns list of SentimentSignal dicts with:
-        - source, score (-1 to 1), label, confidence
-        - key_phrases, tone_indicators, forward_guidance
+        Analyze sentiment signals and return SentimentSignal list.
         """
-        relevant_chunks = [
-            c for c in context_chunks
-            if not document_types or c.get("document_type") in document_types
-        ]
+        context_text = "\n\n".join([
+             f"Source: {c.get('source', 'unknown')}\n{c.get('text', '')}"
+             for c in context_chunks[:15]
+        ])
 
-        prompt = f"""Analyze the sentiment and tone for {ticker} from the following context.
-Identify management tone, analyst sentiment, hedging language, and forward guidance signals.
+        system_prompt = """You are an expert Equity Research Analyst. 
+Analyze the following management commentary for tone, future guidance, and hedging.
+Identify specific 'signals' (positive or negative) with quotes."""
 
-{chr(10).join(c.get('text', '')[:500] for c in relevant_chunks[:8])}
+        user_prompt = f"""Ticker: {ticker}
 
-Return a JSON array of sentiment signals."""
+Context Data:
+{context_text[:12000]}
 
-        response = await self.llm.ainvoke(prompt)
-        return []
+Extract 3-5 key sentiment signals.
+Return JSON format:
+[
+  {{
+    "run_id": "...", 
+    "ticker": "{ticker}",
+    "signal_type": "guidance" | "tone" | "hedging",
+    "sentiment": "positive" | "negative" | "neutral",
+    "score": float (0.0 to 1.0),
+    "description": "Short explanation",
+    "evidence_quote": "Exact quote from text",
+    "impact_level": "high" | "medium" | "low"
+  }}
+]"""
+
+        try:
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            response = await self.llm.ainvoke(messages)
+            
+            content = response.content
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            
+            return json.loads(content)
+            
+        except Exception:
+            return []
