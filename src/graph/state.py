@@ -150,6 +150,8 @@ class HITLReviewPacket(TypedDict):
     reviewed_at: str | None
 
 
+import operator
+
 # ── Main Graph State ─────────────────────────────────────────────────────────
 
 class ResearchState(TypedDict):
@@ -166,8 +168,8 @@ class ResearchState(TypedDict):
 
     # ── Pipeline stage tracking ──────────────────────────────────────────────
     current_stage: str                      # GraphStage enum value
-    completed_stages: list[str]
-    errors: list[dict[str, str]]
+    completed_stages: Annotated[list[str], operator.add]
+    errors: Annotated[list[dict[str, str]], operator.add]
 
     # ── Ingested raw documents ───────────────────────────────────────────────
     raw_documents: list[dict[str, Any]]     # S3 references + metadata
@@ -200,7 +202,7 @@ class ResearchState(TypedDict):
     report_s3_uri: str | None
 
     # ── Audit trail (append-only list) ──────────────────────────────────────
-    audit_trail: list[AuditEvent]
+    audit_trail: Annotated[list[AuditEvent], operator.add]
 
     # ── Real-time metadata ───────────────────────────────────────────────────
     market_data_snapshot: dict[str, Any] | None

@@ -208,6 +208,9 @@ async def get_research_result(run_id: str):
             "overall_confidence": values.get("overall_confidence"),
             "hitl_required": values.get("hitl_required"),
             "hitl_packet": values.get("hitl_packet"),
+            "financial_metrics": values.get("financial_metrics"),
+            "sentiment_signals": values.get("sentiment_signals", []),
+            "risk_flags": values.get("risk_flags", []),
             "errors": values.get("errors", []),
         }
     except HTTPException:
@@ -328,10 +331,11 @@ async def _run_graph_background(run_id: str, ticker: str, initial_state: dict):
 
             elif event_kind == "on_chain_end" and event_name not in ("LangGraph",):
                 output = event.get("data", {}).get("output", {})
+                current_stage = output.get("current_stage", "") if isinstance(output, dict) else ""
                 await _broadcast_to_run(run_id, {
                     "type": "agent_complete",
                     "agent": event_name,
-                    "stage": output.get("current_stage", ""),
+                    "stage": current_stage,
                     "run_id": run_id,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })

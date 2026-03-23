@@ -24,57 +24,55 @@ class FinancialAnalystAgent:
         """
         Analyze financial data and return FinancialMetrics dict.
         """
-        # Combine context chunks and tables for analysis
-        # In a real app, we'd pass structured table data too
         context_text = "\n\n".join([
              f"Source: {c.get('source', 'unknown')}\n{c.get('text', '')}"
-             for c in context_chunks[:15]
+             for c in context_chunks[:30]
         ])
 
         system_prompt = """You are an institutional Financial Analyst. 
-Your task is to extract exact financial metrics from the provided filing text and tables.
 Return ONLY valid JSON. If a value is unknown, return null. 
-Ensure numbers are in absolute values (e.g., 25.5B for billions)."""
+CRITICAL: Return Revenue and FCF in BILLIONS (e.g. 88.27). 
+Convert millions to billions automatically (88,268M -> 88.268)."""
 
         user_prompt = f"""Ticker: {ticker}
 Market Snapshot: {json.dumps(market_snapshot, indent=2) if market_snapshot else 'N/A'}
 
+Extract the following for the MOST RECENT period:
+1. revenue (Billions USD)
+2. gross_margin (decimal, e.g. 0.42)
+3. operating_margin (decimal)
+4. net_margin (decimal)
+5. eps (dollars)
+6. eps_beat (decimal, e.g. 0.03 for 3% beat)
+7. revenue_growth_yoy (decimal, e.g. 0.12)
+8. fcf (Billions USD)
+9. debt_to_equity (float)
+10. current_ratio (float)
+11. roe (decimal)
+12. pe_ratio (float)
+13. ev_ebitda (float)
+
 Context Data:
-{context_text[:12000]}
+{context_text[:15000]}
 
-Extract the following metrics for the most recent fiscal period:
-1. revenue (sum of revenue)
-2. gross_margin (%)
-3. operating_margin (%)
-4. net_margin (%)
-5. eps (diluted earnings per share)
-6. eps_beat (vs consensus if mentioned, else null)
-7. revenue_growth_yoy (%)
-8. fcf (free cash flow)
-9. debt_to_equity
-10. current_ratio
-11. roe (%)
-12. pe_ratio
-13. ev_ebitda
-
-Return JSON format:
+Return JSON:
 {{
-  "ticker": string,
-  "period": string,
-  "revenue": string,
+  "ticker": "{ticker}",
+  "period": "string",
+  "revenue": float,
   "gross_margin": float,
   "operating_margin": float,
   "net_margin": float,
   "eps": float,
   "eps_beat": float,
   "revenue_growth_yoy": float,
-  "fcf": string,
+  "fcf": float,
   "debt_to_equity": float,
   "current_ratio": float,
   "roe": float,
   "pe_ratio": float,
   "ev_ebitda": float,
-  "summary": string (2-sentence summary of financial health)
+  "summary": "2-sentence summary"
 }}"""
 
         try:
@@ -84,7 +82,6 @@ Return JSON format:
             ]
             response = await self.llm.ainvoke(messages)
             
-            # Extract JSON from response (handling potential markdown fences)
             content = response.content
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
@@ -92,7 +89,24 @@ Return JSON format:
                 content = content.split("```")[1].split("```")[0].strip()
             
             data = json.loads(content)
-            data["raw"] = {} # Placeholder for raw extracted data
+            
+            # --- NORMALIZATION LAYER ---
+            for key in ["revenue", "fcf"]:
+                val = data.get(key)
+                if isinstance(val, (int, float)):
+                    if val > 10_000_000: # Clearly absolute dollars (e.g. 307,000,000,000)
+                        data[key] = round(val / 1_000_000_000, 3)
+                    elif val > 1000: # Likely millions (e.g. 88,268)
+                        data[key] = round(val / 1000, 3)
+                    # Small values (e.g. 88.27) are assumed to be already in Billions
+
+            # Sanity check percentages (if they returned 25 instead of 0.25)
+            for key in ["gross_margin", "operating_margin", "revenue_growth_yoy", "eps_beat"]:
+                val = data.get(key)
+                if isinstance(val, (int, float)) and abs(val) > 1.0:
+                    data[key] = round(val / 100, 4)
+
+            data["raw"] = {} 
             return data
             
         except Exception as e:

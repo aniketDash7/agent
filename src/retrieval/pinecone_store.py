@@ -93,7 +93,11 @@ class PineconeVectorStore:
                 include_metadata=True
             )
             return [
-                {"text": match.metadata["text"], "source": match.metadata.get("source", "")}
+                {
+                    "chunk_id": match.id,
+                    "text": match.metadata["text"], 
+                    "source": match.metadata.get("source", "")
+                }
                 for match in results.matches
             ]
         
@@ -108,7 +112,11 @@ class PineconeVectorStore:
             
             matches.sort(key=lambda x: x[0], reverse=True)
             return [
-                {"text": m[1]["text"], "source": m[1]["source"]}
+                {
+                    "chunk_id": f"mock_{hash(m[1]['text'])}",
+                    "text": m[1]["text"], 
+                    "source": m[1]["source"]
+                }
                 for m in matches[:top_k]
             ]
         

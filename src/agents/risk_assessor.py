@@ -45,8 +45,8 @@ Return JSON format:
     "category": "macro" | "operational" | "financial" | "regulatory",
     "severity": "critical" | "high" | "medium" | "low",
     "description": "Detailed risk description",
-    "mitigation_noted": boolean,
-    "source_filing": "string"
+    "evidence": ["Quote 1", "Quote 2"],
+    "mitigation_noted": boolean
   }}
 ]"""
 

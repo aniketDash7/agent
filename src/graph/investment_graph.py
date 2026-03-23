@@ -147,9 +147,9 @@ async def ingest_documents_node(state: ResearchState) -> dict:
         "market_data_snapshot": market_snapshot,
         "data_freshness": data_freshness,
         "current_stage": GraphStage.EXTRACTION,
-        "completed_stages": state.get("completed_stages", []) + [GraphStage.INGESTION],
+        "completed_stages": [GraphStage.INGESTION],
         "errors": errors,
-        "audit_trail": state.get("audit_trail", []) + [audit_event],
+        "audit_trail": [audit_event],
     }
 
 
@@ -204,8 +204,8 @@ async def extract_multimodal_node(state: ResearchState) -> dict:
         "extracted_figures": all_figures,
         "chart_interpretations": chart_interpretations,
         "current_stage": GraphStage.PLANNING,
-        "completed_stages": state.get("completed_stages", []) + [GraphStage.EXTRACTION],
-        "audit_trail": state.get("audit_trail", []) + [audit_event],
+        "completed_stages": [GraphStage.EXTRACTION],
+        "audit_trail": [audit_event],
     }
 
 
@@ -258,8 +258,8 @@ async def plan_research_node(state: ResearchState) -> dict:
         "research_plan": plan,
         "retrieved_context": unique_retrieved,
         "current_stage": GraphStage.ANALYSIS,
-        "completed_stages": state.get("completed_stages", []) + [GraphStage.PLANNING],
-        "audit_trail": state.get("audit_trail", []) + [audit_event],
+        "completed_stages": [GraphStage.PLANNING],
+        "audit_trail": [audit_event],
     }
 
 
@@ -280,14 +280,14 @@ async def financial_analysis_node(state: ResearchState) -> dict:
         agent="FinancialAnalyst",
         action="compute_metrics",
         input_summary=f"ticker={state['ticker']}",
-        output_summary=f"revenue={metrics.get('revenue')}, margin={metrics.get('operating_margin')}",
+        output_summary=f"revenue={metrics.get('revenue') if isinstance(metrics, dict) else 'N/A'}, margin={metrics.get('operating_margin') if isinstance(metrics, dict) else 'N/A'}",
         duration_ms=duration_ms,
         token_usage=getattr(metrics, "_token_usage", {}),
     )
 
     return {
         "financial_metrics": metrics,
-        "audit_trail": state.get("audit_trail", []) + [audit_event],
+        "audit_trail": [audit_event],
     }
 
 
@@ -298,7 +298,6 @@ async def sentiment_analysis_node(state: ResearchState) -> dict:
     signals = await _sentiment_agent.analyze(
         ticker=state["ticker"],
         context_chunks=state["retrieved_context"],
-        document_types=["earnings_transcript", "10-K", "8-K"],
     )
 
     duration_ms = int((datetime.now(timezone.utc) - t0).total_seconds() * 1000)
@@ -313,7 +312,7 @@ async def sentiment_analysis_node(state: ResearchState) -> dict:
 
     return {
         "sentiment_signals": signals,
-        "audit_trail": state.get("audit_trail", []) + [audit_event],
+        "audit_trail": [audit_event],
     }
 
 
@@ -321,10 +320,9 @@ async def risk_assessment_node(state: ResearchState) -> dict:
     """Identifies and categorizes risk factors from filings and news."""
     t0 = datetime.now(timezone.utc)
 
-    flags = await _risk_agent.assess(
+    flags = await _risk_agent.analyze(
         ticker=state["ticker"],
         context_chunks=state["retrieved_context"],
-        financial_metrics=state.get("financial_metrics"),
     )
 
     duration_ms = int((datetime.now(timezone.utc) - t0).total_seconds() * 1000)
@@ -339,7 +337,7 @@ async def risk_assessment_node(state: ResearchState) -> dict:
 
     return {
         "risk_flags": flags,
-        "audit_trail": state.get("audit_trail", []) + [audit_event],
+        "audit_trail": [audit_event],
     }
 
 
@@ -360,13 +358,13 @@ async def peer_comparison_node(state: ResearchState) -> dict:
         agent="PeerComparator",
         action="benchmark_peers",
         input_summary=f"ticker={state['ticker']}",
-        output_summary=f"peers={comparison.get('peers', [])}",
+        output_summary=f"peers={comparison.get('peers', []) if isinstance(comparison, dict) else 'N/A'}",
         duration_ms=duration_ms,
     )
 
     return {
         "peer_comparison": comparison,
-        "audit_trail": state.get("audit_trail", []) + [audit_event],
+        "audit_trail": [audit_event],
     }
 
 
@@ -407,8 +405,8 @@ async def synthesize_node(state: ResearchState) -> dict:
         "draft_memo": draft,
         "overall_confidence": overall_confidence,
         "current_stage": GraphStage.FACT_CHECK,
-        "completed_stages": state.get("completed_stages", []) + [GraphStage.SYNTHESIS],
-        "audit_trail": state.get("audit_trail", []) + [audit_event],
+        "completed_stages": [GraphStage.SYNTHESIS],
+        "audit_trail": [audit_event],
     }
 
 
@@ -419,16 +417,17 @@ async def fact_check_node(state: ResearchState) -> dict:
     """
     t0 = datetime.now(timezone.utc)
 
-    cited_claims = await _fact_checker.verify(
+    fact_result = await _fact_checker.verify(
         draft_memo=state["draft_memo"],
         context_chunks=state["retrieved_context"],
-        ticker=state["ticker"],
     )
+    
+    cited_claims = fact_result.get("claims", []) if isinstance(fact_result, dict) else (fact_result if isinstance(fact_result, list) else [])
 
     # Recompute confidence after fact-checking
-    verified_ratio = sum(1 for c in cited_claims if c["verified"]) / max(len(cited_claims), 1)
-    avg_claim_confidence = sum(c["confidence"] for c in cited_claims) / max(len(cited_claims), 1)
-    adjusted_confidence = (state["overall_confidence"] * 0.4 + verified_ratio * 0.4 + avg_claim_confidence * 0.2)
+    verified_ratio = sum(1 for c in cited_claims if isinstance(c, dict) and c.get("verified")) / max(len(cited_claims), 1)
+    avg_claim_confidence = sum(c.get("confidence", 0.5) for c in cited_claims if isinstance(c, dict)) / max(len(cited_claims), 1)
+    adjusted_confidence = (state.get("overall_confidence", 0.5) * 0.4 + verified_ratio * 0.4 + avg_claim_confidence * 0.2)
 
     duration_ms = int((datetime.now(timezone.utc) - t0).total_seconds() * 1000)
     audit_event = _audit.create_event(
@@ -444,8 +443,8 @@ async def fact_check_node(state: ResearchState) -> dict:
         "cited_claims": cited_claims,
         "overall_confidence": adjusted_confidence,
         "current_stage": GraphStage.HITL_REVIEW,
-        "completed_stages": state.get("completed_stages", []) + [GraphStage.FACT_CHECK],
-        "audit_trail": state.get("audit_trail", []) + [audit_event],
+        "completed_stages": [GraphStage.FACT_CHECK],
+        "audit_trail": [audit_event],
     }
 
 
@@ -455,8 +454,10 @@ async def hitl_router_node(state: ResearchState) -> dict:
     Triggers interrupt() if confidence < threshold or critical risks found.
     """
     confidence = state.get("overall_confidence", 0.0)
-    critical_risks = [f for f in state.get("risk_flags", []) if f["severity"] == "critical"]
-    unverified_claims = [c for c in state.get("cited_claims", []) if not c["verified"]]
+    critical_risks = [f for f in state.get("risk_flags", []) if isinstance(f, dict) and f.get("severity", "").lower() == "critical"]
+    
+    claims = state.get("cited_claims", []) or []
+    unverified_claims = [c for c in claims if isinstance(c, dict) and not c.get("verified", False)]
 
     needs_hitl = (
         confidence < settings.hitl_confidence_threshold
@@ -484,7 +485,7 @@ async def hitl_router_node(state: ResearchState) -> dict:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "reason": "; ".join(reasons),
         "confidence_score": confidence,
-        "sections_flagged": [c["claim"][:100] for c in unverified_claims[:5]],
+        "sections_flagged": [c.get("claim", "")[:100] for c in unverified_claims[:5] if isinstance(c, dict)],
         "reviewer_id": None,
         "decision": HITLDecision.PENDING,
         "reviewer_notes": None,
@@ -529,8 +530,8 @@ async def hitl_router_node(state: ResearchState) -> dict:
         "hitl_required": True,
         "hitl_packet": review_packet,
         "current_stage": next_stage,
-        "completed_stages": state.get("completed_stages", []) + [GraphStage.HITL_REVIEW],
-        "audit_trail": state.get("audit_trail", []) + [audit_event],
+        "completed_stages": [GraphStage.HITL_REVIEW],
+        "audit_trail": [audit_event],
     }
 
 
@@ -595,8 +596,8 @@ async def generate_report_node(state: ResearchState) -> dict:
         "final_report": final_report,
         "report_s3_uri": s3_uri,
         "current_stage": GraphStage.COMPLETE,
-        "completed_stages": state.get("completed_stages", []) + [GraphStage.REPORT],
-        "audit_trail": state.get("audit_trail", []) + [audit_event],
+        "completed_stages": [GraphStage.REPORT],
+        "audit_trail": [audit_event],
     }
 
 

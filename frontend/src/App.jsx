@@ -104,70 +104,115 @@ export default function App() {
     }, 50);
   }, []);
 
-  const runDemo = useCallback(() => {
-    setDemoMode(true);
-    setTicker("AAPL");
+  const runAnalysis = useCallback(async () => {
+    if (!ticker) return;
+    setDemoMode(false);
+    
+    // Reset state
     setState(s => ({
-      ...s, ticker: "AAPL", company_name: "Apple Inc.", status: "running",
-      run_id: "demo-" + Date.now(), current_stage: "ingestion",
-      completed_stages: [], activity_log: [], overall_confidence: 0,
-      financial_metrics: null, sentiment_signals: [], risk_flags: [],
+      ...s, ticker: ticker, company_name: ticker, status: "running",
+      current_stage: "ingestion", completed_stages: [], activity_log: [], 
+      overall_confidence: 0, financial_metrics: null, 
+      sentiment_signals: [], risk_flags: [], hitl_required: false,
+      hitl_packet: null, final_report: null
     }));
+    setActiveTab("overview");
 
-    let stageIdx = 0;
-    let actIdx = 0;
-    const stageMap = ["ingestion","ingestion","extraction","extraction","planning","planning",
-                      "analysis","analysis","analysis","analysis","analysis","analysis",
-                      "synthesis","fact_check","hitl_review"];
+    try {
+      const res = await fetch("/api/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker: ticker, research_type: researchType, requested_by: "react_ui" })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const runId = data.run_id;
+      setState(s => ({ ...s, run_id: runId }));
 
-    const tick = () => {
-      if (actIdx >= MOCK_ACTIVITY.length) {
-        setState(s => ({
-          ...s, status: "awaiting_review", current_stage: "hitl_review",
-          hitl_required: true, overall_confidence: 0.68,
-          completed_stages: STAGES.slice(0,6).map(s=>s.id),
-          financial_metrics: MOCK_METRICS,
-          sentiment_signals: MOCK_SENTIMENT,
-          risk_flags: MOCK_RISKS,
-        }));
-        setActiveTab("hitl");
-        return;
-      }
-      const item = MOCK_ACTIVITY[actIdx];
-      addActivity(item.agent, item.msg);
-      const stage = stageMap[actIdx] || "analysis";
-      setState(s => ({
-        ...s, current_stage: stage,
-        completed_stages: stageMap.slice(0, actIdx).filter((v,i,a)=>a.indexOf(v)===i),
-        overall_confidence: Math.min(0.68, actIdx * 0.05),
-        financial_metrics: actIdx >= 8 ? MOCK_METRICS : s.financial_metrics,
-        sentiment_signals: actIdx >= 10 ? MOCK_SENTIMENT : s.sentiment_signals,
-        risk_flags: actIdx >= 11 ? MOCK_RISKS : s.risk_flags,
-      }));
-      actIdx++;
-      demoTimerRef.current = setTimeout(tick, 900 + Math.random() * 600);
-    };
-    demoTimerRef.current = setTimeout(tick, 400);
-  }, [addActivity]);
+      // Connect WebSocket
+      if (wsRef.current) wsRef.current.close();
+      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/${runId}`);
+      wsRef.current = ws;
+
+      ws.onmessage = async (e) => {
+        try {
+          const ev = JSON.parse(e.data);
+          if (ev.type === "ping") return;
+          
+          if (ev.type === "agent_start") {
+            addActivity(ev.agent, `Started analysis stage...`);
+          } else if (ev.type === "agent_complete") {
+            addActivity(ev.agent, `Completed task.`);
+            // Fetch updated state to get real metrics!
+            const stateRes = await fetch(`/api/research/${runId}`);
+            if (stateRes.ok) {
+              const stateData = await stateRes.json();
+              setState(s => ({
+                ...s,
+                current_stage: stateData.current_stage ?? s.current_stage,
+                completed_stages: stateData.completed_stages ?? s.completed_stages,
+                overall_confidence: stateData.overall_confidence ?? s.overall_confidence,
+                financial_metrics: stateData.financial_metrics ?? s.financial_metrics,
+                sentiment_signals: stateData.sentiment_signals ?? s.sentiment_signals,
+                risk_flags: stateData.risk_flags ?? s.risk_flags,
+              }));
+            }
+          } else if (ev.type === "hitl_required") {
+            addActivity("System", "Human review required. Pausing graph execution.");
+            setState(s => ({
+              ...s, status: "awaiting_review", hitl_required: true,
+              hitl_packet: ev.hitl_packet,
+              overall_confidence: ev.confidence ?? s.overall_confidence,
+              current_stage: "hitl_review"
+            }));
+            setActiveTab("hitl");
+          } else if (ev.type === "complete") {
+            addActivity("System", "Research complete. Final report generated.");
+            setState(s => ({
+              ...s, status: "complete", final_report: ev.report,
+              overall_confidence: ev.confidence ?? s.overall_confidence, current_stage: "report",
+              financial_metrics: ev.report?.financial_metrics ?? s.financial_metrics,
+              sentiment_signals: ev.report?.sentiment_summary?.signals ?? s.sentiment_signals,
+              risk_flags: ev.report?.risk_summary ?? s.risk_flags,
+            }));
+            setActiveTab("report");
+          } else if (ev.type === "error") {
+            addActivity("System", `Error: ${ev.error}`);
+            setState(s => ({ ...s, status: "error" }));
+          }
+        } catch (err) {
+          console.error("WS Message Error:", err);
+        }
+      };
+      
+    } catch (err) {
+      addActivity("System", `API Error: ${err.message}`);
+      setState(s => ({ ...s, status: "error" }));
+    }
+  }, [ticker, researchType, addActivity]);
 
   useEffect(() => () => clearTimeout(demoTimerRef.current), []);
 
-  const submitHITL = () => {
-    addActivity("HITLGateway", `Review submitted: ${reviewForm.decision.toUpperCase()} — "${reviewForm.notes}"`);
-    setState(s => ({
-      ...s, status: "complete", current_stage: "report",
-      completed_stages: STAGES.map(s=>s.id),
-      overall_confidence: reviewForm.decision === "approved" ? 0.91 : 0.62,
-      hitl_required: false,
-      final_report: {
-        ticker: "AAPL", generated_at: new Date().toISOString(),
-        confidence_score: 0.91,
-        memo: MOCK_MEMO,
-        hitl_reviewed: true,
-        reviewer: "analyst@capitalmind.ai",
-      }
-    }));
-    setActiveTab("report");
+  const submitHITL = async () => {
+    addActivity("HITLGateway", `Submitting review: ${reviewForm.decision.toUpperCase()}...`);
+    try {
+      const res = await fetch(`/api/research/${state.run_id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          run_id: state.run_id,
+          decision: reviewForm.decision,
+          reviewer_id: "analyst@capitalmind.ai",
+          notes: reviewForm.notes,
+        })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setState(s => ({ ...s, hitl_required: false, status: "running" }));
+      setActiveTab("overview");
+    } catch (err) {
+      addActivity("System", `HITL submission failed: ${err.message}`);
+    }
   };
 
   const confidence = state.overall_confidence;
@@ -256,7 +301,7 @@ export default function App() {
             </div>
 
             <div style={{ display: "flex", gap: 6 }}>
-              <button className="btn-primary" style={{ flex: 1 }} onClick={runDemo}>
+              <button className="btn-primary" style={{ flex: 1 }} onClick={runAnalysis}>
                 RUN ANALYSIS ↗
               </button>
               <button className="btn-ghost" onClick={() => setState(MOCK_STATE)}>CLR</button>
@@ -336,8 +381,8 @@ export default function App() {
                     <div style={{ color: "#1e2535", fontSize: 64, marginBottom: 20 }}>◈</div>
                     <div style={{ color: "#2a3040", fontSize: 13, letterSpacing: "0.1em", marginBottom: 8 }}>READY FOR ANALYSIS</div>
                     <div style={{ color: "#1e2535", fontSize: 10 }}>Enter a ticker and run analysis to begin</div>
-                    <button className="btn-primary" style={{ marginTop: 24, padding: "10px 28px" }} onClick={runDemo}>
-                      RUN AAPL DEMO ↗
+                    <button className="btn-primary" style={{ marginTop: 24, padding: "10px 28px" }} onClick={runAnalysis}>
+                      RUN ANALYSIS ↗
                     </button>
                   </div>
                 ) : (
@@ -353,11 +398,11 @@ export default function App() {
                       <div style={{ marginLeft: "auto", textAlign: "right" }}>
                         <div className="label">CONFIDENCE SCORE</div>
                         <div style={{ fontSize: 28, fontWeight: 600, color: confColor, fontFamily: "'IBM Plex Sans', sans-serif" }}>
-                          {(confidence * 100).toFixed(0)}%
+                          {(Number(confidence || 0) * 100).toFixed(0)}%
                         </div>
                         <div style={{ width: 100, marginLeft: "auto", marginTop: 4 }}>
                           <div className="bar-bg">
-                            <div className="bar-fill" style={{ width: `${confidence * 100}%`, background: confColor }} />
+                            <div className="bar-fill" style={{ width: `${Number(confidence || 0) * 100}%`, background: confColor }} />
                           </div>
                         </div>
                       </div>
@@ -380,13 +425,33 @@ export default function App() {
                     {/* Key Metrics Grid */}
                     {state.financial_metrics && (
                       <div>
-                        <div className="label" style={{ marginBottom: 10 }}>KEY METRICS — {state.financial_metrics.period}</div>
+                        <div className="label" style={{ marginBottom: 10 }}>KEY METRICS — {state.financial_metrics.period || "N/A"}</div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 20 }}>
                           {[
-                            { label: "REVENUE", value: `$${(state.financial_metrics.revenue/1000).toFixed(1)}B`, sub: `${state.financial_metrics.revenue_growth_yoy > 0 ? "+" : ""}${(state.financial_metrics.revenue_growth_yoy * 100).toFixed(1)}% YoY`, pos: state.financial_metrics.revenue_growth_yoy > 0 },
-                            { label: "OP. MARGIN", value: `${(state.financial_metrics.operating_margin * 100).toFixed(1)}%`, sub: "operating", pos: state.financial_metrics.operating_margin > 0.2 },
-                            { label: "EPS", value: `$${state.financial_metrics.eps}`, sub: `${state.financial_metrics.eps_beat > 0 ? "+" : ""}${state.financial_metrics.eps_beat?.toFixed(1)}% vs est.`, pos: state.financial_metrics.eps_beat > 0 },
-                            { label: "P/E RATIO", value: `${state.financial_metrics.pe_ratio}×`, sub: "trailing twelve months", pos: null },
+                            { 
+                              label: "REVENUE", 
+                              value: (state.financial_metrics.revenue !== null && state.financial_metrics.revenue !== undefined) ? `$${Number(state.financial_metrics.revenue).toFixed(1)}B` : "N/A", 
+                              sub: `${(state.financial_metrics.revenue_growth_yoy || 0) > 0 ? "+" : ""}${(Number(state.financial_metrics.revenue_growth_yoy || 0) * 100).toFixed(1)}% YoY`, 
+                              pos: (state.financial_metrics.revenue_growth_yoy || 0) > 0 
+                            },
+                            { 
+                              label: "OP. MARGIN", 
+                              value: (state.financial_metrics.operating_margin !== null && state.financial_metrics.operating_margin !== undefined) ? `${(Number(state.financial_metrics.operating_margin) * 100).toFixed(1)}%` : "N/A", 
+                              sub: "operating", 
+                              pos: (state.financial_metrics.operating_margin || 0) > 0.2 
+                            },
+                            { 
+                              label: "EPS", 
+                              value: (state.financial_metrics.eps !== null && state.financial_metrics.eps !== undefined) ? `$${Number(state.financial_metrics.eps).toFixed(2)}` : "N/A", 
+                              sub: `${(state.financial_metrics.eps_beat || 0) > 0 ? "+" : ""}${(Number(state.financial_metrics.eps_beat || 0) * 100).toFixed(1)}% vs est.`, 
+                              pos: (state.financial_metrics.eps_beat || 0) > 0 
+                            },
+                            { 
+                              label: "P/E RATIO", 
+                              value: (state.financial_metrics.pe_ratio !== null && state.financial_metrics.pe_ratio !== undefined) ? `${Number(state.financial_metrics.pe_ratio).toFixed(1)}×` : "N/A", 
+                              sub: "trailing twelve months", 
+                              pos: null 
+                            },
                           ].map((m, i) => (
                             <div key={i} className="metric-card">
                               <div className="label">{m.label}</div>
@@ -417,18 +482,18 @@ export default function App() {
                             <div className="label" style={{ marginBottom: 8 }}>SENTIMENT SIGNALS</div>
                             {state.sentiment_signals.map((sig, i) => (
                               <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                                <div style={{ width: 100, fontSize: 9, color: "#4a5568", letterSpacing: "0.06em" }}>{sig.source.replace(/_/g," ").toUpperCase()}</div>
+                                <div style={{ width: 100, fontSize: 9, color: "#4a5568", letterSpacing: "0.06em" }}>{(sig.source || "unknown").replace(/_/g," ").toUpperCase()}</div>
                                 <div style={{ flex: 1 }}>
                                   <div className="bar-bg">
                                     <div className="bar-fill" style={{
-                                      width: `${Math.abs(sig.score) * 100}%`,
-                                      background: SENTIMENT_COLOR[sig.label],
-                                      marginLeft: sig.score < 0 ? `${(1 - Math.abs(sig.score)) * 100}%` : 0
+                                      width: `${Math.abs(sig.score || 0) * 100}%`,
+                                      background: SENTIMENT_COLOR[sig.label] || "#888",
+                                      marginLeft: (sig.score || 0) < 0 ? `${(1 - Math.abs(sig.score || 0)) * 100}%` : 0
                                     }} />
                                   </div>
                                 </div>
-                                <span style={{ fontSize: 10, color: SENTIMENT_COLOR[sig.label], width: 55, textAlign: "right" }}>{sig.label.toUpperCase()}</span>
-                                <span style={{ fontSize: 10, color: "#4a5568", width: 30, textAlign: "right" }}>{(sig.score > 0 ? "+" : "") + sig.score.toFixed(2)}</span>
+                                <span style={{ fontSize: 10, color: SENTIMENT_COLOR[sig.label] || "#888", width: 55, textAlign: "right" }}>{(sig.label || "neutral").toUpperCase()}</span>
+                                <span style={{ fontSize: 10, color: "#4a5568", width: 30, textAlign: "right" }}>{((sig.score || 0) > 0 ? "+" : "") + Number(sig.score || 0).toFixed(2)}</span>
                               </div>
                             ))}
                           </div>
@@ -502,8 +567,8 @@ export default function App() {
                         <table style={{ width: "100%", borderCollapse: "collapse" }}>
                           <tbody>
                             {[
-                              ["P/E Ratio",      `${state.financial_metrics.pe_ratio}×`],
-                              ["EV/EBITDA",      `${state.financial_metrics.ev_ebitda}×`],
+                              ["P/E Ratio",      `${Number(state.financial_metrics.pe_ratio || 0).toFixed(2)}×`],
+                              ["EV/EBITDA",      `${Number(state.financial_metrics.ev_ebitda || 0).toFixed(2)}×`],
                               ["Analyst Rating", "BUY (27) | HOLD (9) | SELL (2)"],
                             ].map(([l, v], i) => (
                               <tr key={i} style={{ borderBottom: "1px solid #1a2035" }}>
@@ -536,12 +601,12 @@ export default function App() {
                 {state.risk_flags.length === 0 ? (
                   <div style={{ color: "#2a3040", fontSize: 10 }}>No risk flags yet.</div>
                 ) : state.risk_flags.map((flag, i) => (
-                  <div key={i} style={{ borderLeft: `3px solid ${SEVERITY_COLOR[flag.severity]}`, paddingLeft: 14, marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid #1a2035" }}>
+                  <div key={i} style={{ borderLeft: `3px solid ${SEVERITY_COLOR[flag.severity] || "#888"}`, paddingLeft: 14, marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid #1a2035" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                      <span className="pill" style={{ background: `${SEVERITY_COLOR[flag.severity]}20`, color: SEVERITY_COLOR[flag.severity] }}>{flag.severity.toUpperCase()}</span>
-                      <span className="pill" style={{ background: "#1a2035", color: "#6b7585" }}>{flag.category.toUpperCase()}</span>
+                      <span className="pill" style={{ background: `${SEVERITY_COLOR[flag.severity] || "#888"}20`, color: SEVERITY_COLOR[flag.severity] || "#888" }}>{(flag.severity || "info").toUpperCase()}</span>
+                      <span className="pill" style={{ background: "#1a2035", color: "#6b7585" }}>{(flag.category || "general").toUpperCase()}</span>
                     </div>
-                    <div style={{ color: "#c8cdd8", fontSize: 11, lineHeight: 1.6, marginBottom: 8 }}>{flag.description}</div>
+                    <div style={{ color: "#c8cdd8", fontSize: 11, lineHeight: 1.6, marginBottom: 8 }}>{flag.description || "No description provided."}</div>
                     {flag.evidence?.map((e, j) => (
                       <div key={j} style={{ color: "#4a5568", fontSize: 9, fontStyle: "italic", borderLeft: "1px solid #1a2035", paddingLeft: 8, marginBottom: 3 }}>"{e}"</div>
                     ))}
@@ -559,24 +624,24 @@ export default function App() {
                 ) : state.sentiment_signals.map((sig, i) => (
                   <div key={i} style={{ marginBottom: 20, paddingBottom: 20, borderBottom: "1px solid #1a2035" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                      <span style={{ color: "#6b7585", fontSize: 9, letterSpacing: "0.1em", width: 140 }}>{sig.source.replace(/_/g," ").toUpperCase()}</span>
-                      <span className="pill" style={{ background: `${SENTIMENT_COLOR[sig.label]}20`, color: SENTIMENT_COLOR[sig.label] }}>{sig.label.toUpperCase()}</span>
-                      <span style={{ marginLeft: "auto", color: SENTIMENT_COLOR[sig.label], fontWeight: 600, fontSize: 14 }}>
-                        {sig.score > 0 ? "+" : ""}{sig.score.toFixed(2)}
+                      <span style={{ color: "#6b7585", fontSize: 9, letterSpacing: "0.1em", width: 140 }}>{(sig.source || "unknown").replace(/_/g," ").toUpperCase()}</span>
+                      <span className="pill" style={{ background: `${SENTIMENT_COLOR[sig.label] || "#888"}20`, color: SENTIMENT_COLOR[sig.label] || "#888" }}>{(sig.label || "neutral").toUpperCase()}</span>
+                      <span style={{ marginLeft: "auto", color: SENTIMENT_COLOR[sig.label] || "#888", fontWeight: 600, fontSize: 14 }}>
+                        {((sig.score || 0) > 0 ? "+" : "") + Number(sig.score || 0).toFixed(2)}
                       </span>
                     </div>
                     <div style={{ height: 8, background: "#1a2035", borderRadius: 2, marginBottom: 10, position: "relative" }}>
                       <div style={{ position: "absolute", left: "50%", top: 0, width: 1, height: "100%", background: "#2a3040" }} />
                       <div style={{
                         position: "absolute", height: "100%", borderRadius: 2,
-                        background: SENTIMENT_COLOR[sig.label],
-                        left: sig.score >= 0 ? "50%" : `${(0.5 + sig.score / 2) * 100}%`,
-                        width: `${Math.abs(sig.score) * 50}%`,
+                        background: SENTIMENT_COLOR[sig.label] || "#888",
+                        left: (sig.score || 0) >= 0 ? "50%" : `${(0.5 + (sig.score || 0) / 2) * 100}%`,
+                        width: `${Math.abs(sig.score || 0) * 50}%`,
                       }} />
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: "#2a3040" }}>
                       <span>BEARISH −1.0</span>
-                      <span style={{ color: "#4a5568" }}>Confidence: {(sig.confidence * 100).toFixed(0)}%</span>
+                      <span style={{ color: "#4a5568" }}>Confidence: {(Number(sig.confidence || 0) * 100).toFixed(0)}%</span>
                       <span>BULLISH +1.0</span>
                     </div>
                   </div>
@@ -659,7 +724,10 @@ export default function App() {
                 ) : (
                   <div style={{ background: "#0d1117", border: "1px solid #1a2035", borderRadius: 4, padding: "20px 24px" }}>
                     <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11, lineHeight: 1.9, color: "#a8b4c4", whiteSpace: "pre-wrap" }}>
-                      {memoExpanded ? MOCK_MEMO : MOCK_MEMO.slice(0, 800) + "..."}
+                      {(() => {
+                        const memoText = typeof state.final_report === 'string' ? state.final_report : (state.final_report?.memo || "");
+                        return memoExpanded ? memoText : memoText.slice(0, 800) + "...";
+                      })()}
                     </div>
                     <button className="btn-ghost" style={{ marginTop: 14, fontSize: 10 }} onClick={() => setMemoExpanded(e => !e)}>
                       {memoExpanded ? "COLLAPSE ↑" : "READ FULL MEMO ↓"}

@@ -37,18 +37,16 @@ Identify specific 'signals' (positive or negative) with quotes."""
 Context Data:
 {context_text[:12000]}
 
-Extract 3-5 key sentiment signals.
+Extract 3-5 key sentiment signals from the management commentary.
 Return JSON format:
 [
   {{
-    "run_id": "...", 
-    "ticker": "{ticker}",
-    "signal_type": "guidance" | "tone" | "hedging",
-    "sentiment": "positive" | "negative" | "neutral",
-    "score": float (0.0 to 1.0),
+    "source": "TRANSCRIPT" or "Earnings Call",
+    "label": "positive" | "negative" | "neutral",
+    "score": float (-1.0 to 1.0),
+    "confidence": float (0.0 to 1.0),
     "description": "Short explanation",
-    "evidence_quote": "Exact quote from text",
-    "impact_level": "high" | "medium" | "low"
+    "evidence_quote": "Exact quote from text"
   }}
 ]"""
 

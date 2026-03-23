@@ -70,9 +70,30 @@ Pinecone (Serverless)      ← Vector embeddings (3072-dim)
 | Vector search | Pinecone Serverless, 3072-dim, namespace per ticker |
 | Hybrid retrieval | Dense (Pinecone) — sparse (BM25) fusion planned |
 
+### 🗄️ Database Setup
+
+CapitalMind requires **PostgreSQL** for storage and **Pinecone** for document search.
+
+#### 1. PostgreSQL (Checkpoints & Audit)
+Ensure you have a local PostgreSQL instance running. Create a database named `capitalmind`:
+```bash
+psql -U postgres -c "CREATE DATABASE capitalmind;"
+```
+The application will automatically create the required `research_runs` and `audit_events` tables on startup.
+
+#### 2. Vector Store (Pinecone)
+1. Sign up for a free [Pinecone](https://www.pinecone.io/) account.
+2. Create an Index named `capitalmind` with **1024 dimensions** (matching `mxbai-embed-large`).
+3. Metric: `cosine`.
+4. Add your API Key to the `.env` file:
+   ```env
+   PINECONE_API_KEY=your_key_here
+   ```
+
 ---
 
-## Quick Start (Local)
+### 🚀 Getting Started
+ (Local)
 
 ### 1. Prerequisites
 - Python 3.12+

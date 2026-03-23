@@ -19,13 +19,13 @@ class Settings(BaseSettings):
 
     # ── Ollama (Local LLM) ───────────────────────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"
-    primary_model: str = "llama3.1:8b"        # Main reasoning LLM
-    vision_model: str = "llava:13b"           # Multimodal / chart interpretation
-    embedding_model: str = "nomic-embed-text"  # Local embeddings (768-dim)
-    embedding_dim: int = 768
+    primary_model: str = "llama3.2:3b"        # Main reasoning LLM
+    vision_model: str = "qwen3.5:2b"           # Multimodal / chart interpretation
+    embedding_model: str = "mxbai-embed-large"  # Local embeddings (1024-dim)
+    embedding_dim: int = 1024
 
     # ── Vector Store ─────────────────────────────────────────────────────────
-    pinecone_api_key: SecretStr = SecretStr("")
+    pinecone_api_key: SecretStr = SecretStr("pcsk_FJShz_BAUgCZEpZs2ZCwjW51ATStZNVgczT1QEwdKCEN44eBeAo1MU9c91a7zbVs5gRde")
     pinecone_index: str = "capitalmind"
     retrieval_top_k: int = 8
 
