@@ -6,6 +6,7 @@ from src.agents.query_planner_agent import QueryPlannerAgent
 from src.agents.retriever_agent import RetrieverAgent
 from src.agents.synthesizer_agent import SynthesizerAgent
 from src.agents.validator_agent import ValidatorAgent
+from src.agents.reranker_agent import RerankerAgent
 from typing import Dict, Any, List
 import logging
 
@@ -32,6 +33,10 @@ class AgentOrchestrator:
         self.validator = ValidatorAgent(
             llm_client,
             quality_threshold=config.get('agents', {}).get('quality_threshold', 0.7)
+        )
+        self.reranker = RerankerAgent(
+            llm_client,
+            top_k=config.get('retrieval', {}).get('rerank_top_k', 3)
         )
         
         self.max_iterations = config.get('agents', {}).get('max_iterations', 3)
@@ -145,8 +150,6 @@ class AgentOrchestrator:
         ])
         
         # Synthesize final answer
-        final_synthesis = self.synthesizer.execute(query, [])
-        
         # Use LLM to combine sub-answers
         combine_prompt = f"""Given these sub-answers, provide a comprehensive answer to the original query.
 
@@ -206,6 +209,6 @@ Query: {query}"""
         """Collect thoughts from all agents."""
         all_thoughts = []
         for agent in [self.router, self.planner, self.retriever, 
-                      self.synthesizer, self.validator]:
+                      self.synthesizer, self.validator, self.reranker]:
             all_thoughts.extend(agent.get_thought_log())
         return all_thoughts

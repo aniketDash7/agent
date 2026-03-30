@@ -73,8 +73,8 @@ class RetrieverAgent(BaseAgent):
             if match:
                 confidence = float(match.group(1))
                 return confidence
-        except:
-            pass
+        except Exception as e:
+            self.log_thought(f"Evaluation failed: {e}, falling back to avg score")
         
         # Fallback: use average similarity score
         avg_score = sum(r.get('score', 0) for r in results) / len(results)
